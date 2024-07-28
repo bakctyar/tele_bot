@@ -33,11 +33,7 @@
 #
 #
 # async def start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-#     """Displays info on how to use the bot."""
-#     msg = (
-#         " /noshipping for an "
-#         "invoice without shipping."
-#     )
+#     msg = (платить)
 #
 #     await update.message.reply_text(msg)
 #
@@ -45,11 +41,11 @@
 # async def start_without_shipping_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #
 #     chat_id = update.message.chat_id
-#     title = "Payment Example"
-#     description = "Payment Example using python-telegram-bot"
+#     title = "название"
+#     description = "описание"
 #     payload = "Custom-Payload"
-#     currency = "USD"
-#     price = 1
+#     currency = "SOM"
+#     price = 2000
 #     prices = [LabeledPrice("Test", price * 100)]
 #     await context.bot.send_invoice(
 #         chat_id, title, description, payload, PAYMENT_PROVIDER_TOKEN, currency, prices
@@ -61,14 +57,14 @@
 #
 #     query = update.pre_checkout_query
 #     if query.invoice_payload != "Custom-Payload":
-#         await query.answer(ok=False, error_message="Something went wrong...")
+#         await query.answer(ok=False, error_message="...............")
 #     else:
 #         await query.answer(ok=True)
 #
 #
 #
 # async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-#     await update.message.reply_text("Thank you for your payment!")
+#     await update.message.reply_text("Спасибоза покупку!")
 #
 #
 # def main() -> None:
