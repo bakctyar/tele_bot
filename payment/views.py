@@ -7,9 +7,8 @@ PAY_TOKEN = config('PAYMENT_PROVIDER_TOKEN')
 
 async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Подтверждаем нажатие кнопки
 
-    await query.edit_message_text(text="Вы находитесь в разделе оплаты.")
+    await query.message.reply_text(text='00000')
 
 
 async def start_without_shipping_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

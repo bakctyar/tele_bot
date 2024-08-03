@@ -14,6 +14,7 @@ from decouple import config
 from asgiref.sync import sync_to_async
 
 from .models import SubscriptionOptions
+from payment.views import payment
 
 # Определение клавиатуры
 option_keyboard = [
@@ -96,7 +97,7 @@ async def continue_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
     if query.data == "continue":
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)  # Удаляем старое сообщение
         await context.bot.delete_message(chat_id=continue_subscriptions_chat_id, message_id=continue_subscriptions_message_id)
-        await context.bot.send_message(chat_id=chat_id, text="  88")
+        await payment(update, context)
 
     # Очистка данных после использования
     context.user_data.pop('chat_id', None)
