@@ -9,6 +9,7 @@ from telegram.ext import (
     ContextTypes,
     CallbackQueryHandler,
 )
+
 from decouple import config
 from asgiref.sync import sync_to_async
 
@@ -72,20 +73,47 @@ async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYP
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)  # Удаляем старое сообщение
         await context.bot.delete_message(chat_id=chat_id_change_subscriptions, message_id=message_id_change_subscriptions)
         await context.bot.send_message(chat_id=chat_id, text='Измените тип подписки:', reply_markup=reply_markup)
-    elif query.data == "continue":
+
+    # Очистка данных после использования
+    context.user_data.pop('chat_id', None)
+    context.user_data.pop('message_id', None)
+
+
+async def continue_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    continue_subscriptions_chat_id = query.message.chat_id
+    continue_subscriptions_message_id = query.message.message_id
+
+    chat_id = context.user_data.get('chat_id')
+    message_id = context.user_data.get('message_id')
+
+    if chat_id is None or message_id is None:
+        await query.message.reply_text("Данные о чате или сообщении отсутствуют.")
+        return
+
+    if query.data == "continue":
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)  # Удаляем старое сообщение
-        await context.bot.delete_message(chat_id=chat_id_change_subscriptions, message_id=message_id_change_subscriptions)
+        await context.bot.delete_message(chat_id=continue_subscriptions_chat_id, message_id=continue_subscriptions_message_id)
         await context.bot.send_message(chat_id=chat_id, text="  88")
 
     # Очистка данных после использования
     context.user_data.pop('chat_id', None)
     context.user_data.pop('message_id', None)
 
+
+
+
+
+
+
 def main() -> None:
     application = Application.builder().token(config('TOKEN_BOT')).build()
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CallbackQueryHandler(selection_of_subscriptions, pattern='^(standard|pro|vip)$'))
-    application.add_handler(CallbackQueryHandler(change_subscriptions, pattern="^(continue|change)$"))
+    application.add_handler(CallbackQueryHandler(change_subscriptions, pattern="^(change)$"))
+    application.add_handler(CallbackQueryHandler(continue_subscriptions, pattern="^(continue)$"))
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
