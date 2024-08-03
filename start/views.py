@@ -10,12 +10,10 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 from decouple import config
+from asgiref.sync import sync_to_async
 
-# from .models import SubscriptionOptions
+from .models import SubscriptionOptions
 
-
-
-    
 # Определение клавиатуры
 option_keyboard = [
     [InlineKeyboardButton("Стандартная подписка", callback_data='standard')],
@@ -43,21 +41,8 @@ async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAU
     context.user_data['chat_id'] = query.message.chat_id
     context.user_data['message_id'] = query.message.message_id
 
-    # option = models.SubscriptionOptions.objects.get(slug=selected_option)
-    await query.edit_message_text(text=option.description)
-    if selected_option == "standard":
-        await query.edit_message_text(text=f"Вы выбрали подписку <<{selected_option}>> стойимость,"
-                                           f" которого состовляет 1000 сом")
-    if selected_option == "pro":
-        await query.edit_message_text(
-            text=f"Вы выбрали подписку <<{selected_option }>> стойимость,"
-                 f" которого состовляет 2000 сомов и дейтвует на"
-                 f" любые курсы пребритаеме вами 15% скидка")
-    if selected_option == "vip":
-        await query.edit_message_text(
-            text=f"Вы выбрали подписку <<{selected_option}>> стойимость, "
-                 f"которого состовляет 2500 сомов и дейтвует на любые "
-                 f"курсы пребритаемве вами 25% скидка")
+    option = await sync_to_async(SubscriptionOptions.objects.get)(slug=selected_option)
+    await query.edit_message_text(text=f'{option.description} {option.price} сомов.')
 
     keyboard = [
         [InlineKeyboardButton('продолжить', callback_data="continue"),
@@ -65,6 +50,7 @@ async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAU
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text(f"Выберите действие:", reply_markup=reply_markup)
+
 
 async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     'пользователь меняет свою подписку'
@@ -89,7 +75,7 @@ async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYP
     elif query.data == "continue":
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)  # Удаляем старое сообщение
         await context.bot.delete_message(chat_id=chat_id_change_subscriptions, message_id=message_id_change_subscriptions)
-        await context.bot.send_message(chat_id=chat_id, text="Плати")
+        await context.bot.send_message(chat_id=chat_id, text="  88")
 
     # Очистка данных после использования
     context.user_data.pop('chat_id', None)
