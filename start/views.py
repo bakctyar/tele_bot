@@ -1,31 +1,24 @@
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
-from telegram.ext import (
-    CommandHandler,
-    Application,
-    ContextTypes,
-    CallbackQueryHandler,
-    PreCheckoutQueryHandler,
-    MessageHandler,
-    filters
-)
-
 from decouple import config
 from asgiref.sync import sync_to_async
-
-from .models import SubscriptionOptions
-from payment.views import (
-    payment,
-    pay_via_stripe,
-    pay_via_manager,
-    precheckout_callback,
-    successful_payment,
-    handle_photo
-
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    CommandHandler, Application, ContextTypes, CallbackQueryHandler,
+    PreCheckoutQueryHandler, MessageHandler, filters
 )
+from payment.views import (
+    payment, pay_via_stripe, pay_via_manager, precheckout_callback,
+    successful_payment, handle_photo
+)
+from course.views import agree, choice_course
+from .models import SubscriptionOptions
+
+# Кэшируем идентификаторы курсов для использования в регулярном выражении
+def get_course_ids():
+    return [str(i.id) for i in SubscriptionOptions.objects.all()]
+
+course_ids_str = get_course_ids()
+course_pattern = f"^(course_({'|'.join(course_ids_str)}))$"
+
 # Определение клавиатуры
 option_keyboard = [
     [InlineKeyboardButton("Стандартная подписка", callback_data='standard')],
@@ -41,10 +34,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Чтобы узнать больше о подписках, нажмите на соответствующую кнопку ниже."
     )
     reply_markup = InlineKeyboardMarkup(option_keyboard)
-    await update.message.reply_text("выберите подписку", reply_markup=reply_markup)
+    await update.message.reply_text("Выберите подписку", reply_markup=reply_markup)
 
 async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    "обрабатывает нажатую кнопку пользователем"
     query = update.callback_query
     await query.answer()
     selected_option = query.data
@@ -58,20 +50,15 @@ async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAU
 
     context.user_data['selection_data'] = option
     keyboard = [
-        [InlineKeyboardButton('продолжить', callback_data="continue"),
-         InlineKeyboardButton('изменить', callback_data="change")],
+        [InlineKeyboardButton('Продолжить', callback_data="continue"),
+         InlineKeyboardButton('Изменить', callback_data="change")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.reply_text(f"Выберите действие:", reply_markup=reply_markup)
-
-
+    await query.message.reply_text("Выберите действие:", reply_markup=reply_markup)
+    
 async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    'пользователь меняет свою подписку'
     query = update.callback_query
     await query.answer()
-
-    change_subscriptions_chat_id = query.message.chat_id
-    change_subscriptions_message_id = query.message.message_id
 
     chat_id = context.user_data.get('chat_id')
     message_id = context.user_data.get('message_id')
@@ -79,24 +66,20 @@ async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYP
     if chat_id is None or message_id is None:
         await query.message.reply_text("Данные о чате или сообщении отсутствуют.")
         return
+
     if query.data == "change":
         reply_markup = InlineKeyboardMarkup(option_keyboard)
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)  # Удаляем старое сообщение
-        await context.bot.delete_message(chat_id=change_subscriptions_chat_id, message_id=change_subscriptions_message_id)
+        await context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
         await context.bot.send_message(chat_id=chat_id, text='Измените тип подписки:', reply_markup=reply_markup)
-    if query.data == "continue":
+    elif query.data == "continue":
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)  # Удаляем старое сообщение
-        await context.bot.delete_message(chat_id=change_subscriptions_chat_id, message_id=change_subscriptions_message_id)
+        await context.bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
         await payment(update, context)
 
     # Очистка данных после использования
     context.user_data.pop('chat_id', None)
     context.user_data.pop('message_id', None)
-
-
-
-
-
 
 def main() -> None:
     application = Application.builder().token(config('TOKEN_BOT')).build()
@@ -108,6 +91,9 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     application.add_handler(CallbackQueryHandler(pay_via_manager, pattern="^(manager)$"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(CallbackQueryHandler(agree, pattern="^(agree)$"))
+    application.add_handler(CallbackQueryHandler(choice_course, pattern=course_pattern))
+
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":

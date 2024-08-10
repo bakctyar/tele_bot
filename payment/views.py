@@ -8,7 +8,6 @@ from telegram.ext import ContextTypes
 
 from buyers.models import SignedPeople
 from asgiref.sync import sync_to_async
-from django.db.utils import IntegrityError
 from decouple import config
 
 
@@ -80,7 +79,6 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.pre_checkout_query
     if query:
         expected_payload = context.user_data.get('invoice_payload')
-        #logging.info(f"Expected payload: {expected_payload}, Actual payload: {query.invoice_payload}")
 
         if expected_payload is None:
             await query.answer(ok=False, error_message="Ошибка: отсутствует payload.")
@@ -88,18 +86,18 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if query.invoice_payload != expected_payload:
             await query.answer(ok=False, error_message="Ошибка в плательщике.")
-        else:
-            await query.answer(ok=True)
+            return
 
         user_id = update.effective_user.id
-        # Проверяем, есть ли у пользователя активная подписка
 
+        # Проверяем, есть ли у пользователя активная подписка
         try:
             await sync_to_async(SignedPeople.objects.get)(user_id=user_id, status=True)
             await query.answer(ok=False, error_message="Вы уже являетесь подписчиком. Оплата не требуется.")
+            return
         except SignedPeople.DoesNotExist:
+            # Подписки нет, подтверждаем платеж
             await query.answer(ok=True)
-
 
 
 
@@ -118,6 +116,7 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             await sync_to_async(SignedPeople.objects.get)(user_id=data['user_id'])
             await context.bot.send_message(chat_id=chat_id, text="Вы уже являетесь подписчиком")
+            privacy_policy(update, context)
         except SignedPeople.DoesNotExist:
             await sync_to_async(SignedPeople.objects.create)(**data)
             await update.message.reply_text('Вы теперь подписчик!')
