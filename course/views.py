@@ -5,15 +5,17 @@ from telegram import (
     InlineKeyboardMarkup
 )
 from telegram.ext import ContextTypes
-
-
-
-from .models import Course
-
 from asgiref.sync import sync_to_async
 
+from payment.views import payment
+from .models import Course
 
-async def agree(update: Update, context: ContextTypes.DEFAULT_TYPE):
+keyboard_purchases_course = [
+    [InlineKeyboardButton('Купить', callback_data='buy')],
+    [InlineKeyboardButton('вернуться назад', callback_data='un_buy')]
+]
+
+async def list_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
@@ -45,14 +47,14 @@ async def agree(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Ловим исключения и отображаем сообщение об ошибке
             await query.edit_message_text("Ошибка при получении курсов. Попробуйте позже.")
 
-            print(f"Error: {e}")
+
 
 
 async def choice_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    reply_markup = InlineKeyboardMarkup(keyboard_purchases_course)
 
-    keyboard_purchases_course = [[InlineKeyboardButton('Купить')]]
 
     course_id = query.data.split("_")[-1]
     if course_id:
@@ -60,12 +62,29 @@ async def choice_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
             course = await sync_to_async(Course.objects.get)(id=int(course_id))
             await query.edit_message_text(
                 f'<b>{course.title}</b>\n\n{course.description}',
-                parse_mode='HTML'
+                parse_mode='HTML', reply_markup=reply_markup
             )
+            context.user_data['selection_data'] = course
+
         except Course.DoesNotExist:
             await query.edit_message_text(text=f'нет такого курса')
     else:
         await query.edit_message_text(text='Некорректный запрос.')
+
+
+async def buy_or_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "buy":
+        await payment(update, context)
+    if query.data == "un_buy":
+        await update.message.reply_text('ok')
+
+
+
+
+
 
 
 

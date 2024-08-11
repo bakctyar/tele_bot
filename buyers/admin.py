@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import SignedPeople
+from .models import SignedPeople, OrderCourse
 
 @admin.register(SignedPeople)
 class AdminSignedPeople(admin.ModelAdmin):
@@ -11,3 +11,6 @@ class AdminSignedPeople(admin.ModelAdmin):
 
 
 
+@admin.register(OrderCourse)
+class OrderCourse(admin.ModelAdmin):
+    list_display = ('user', 'course', 'create_up', 'update_up')

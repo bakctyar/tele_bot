@@ -9,7 +9,10 @@ from payment.views import (
     payment, pay_via_stripe, pay_via_manager, precheckout_callback,
     successful_payment, handle_photo
 )
-from course.views import agree, choice_course
+from course.views import (
+    list_course, choice_course, buy_or_back
+)
+
 from .models import SubscriptionOptions
 
 # Кэшируем идентификаторы курсов для использования в регулярном выражении
@@ -42,7 +45,7 @@ async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAU
     selected_option = query.data
 
     # Сохраняем идентификаторы сообщения и чата в контексте
-    context.user_data['chat_id'] = query.message.chat_id
+    context.user_data['chat_id'] = query.message.chat.id
     context.user_data['message_id'] = query.message.message_id
 
     option = await sync_to_async(SubscriptionOptions.objects.get)(slug=selected_option)
@@ -91,8 +94,9 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     application.add_handler(CallbackQueryHandler(pay_via_manager, pattern="^(manager)$"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    application.add_handler(CallbackQueryHandler(agree, pattern="^(agree)$"))
+    application.add_handler(CallbackQueryHandler(list_course, pattern="^(agree)$"))
     application.add_handler(CallbackQueryHandler(choice_course, pattern=course_pattern))
+    application.add_handler(CallbackQueryHandler(buy_or_back, pattern="^(buy|un_buy)$"))
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 

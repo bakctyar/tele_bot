@@ -2,7 +2,6 @@ from django.db import models
 
 
 
-
 class Course(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField()
@@ -32,3 +31,6 @@ class Content(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.get_content_type_display()})"
+
+
+

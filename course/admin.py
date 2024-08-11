@@ -8,3 +8,4 @@ class AdminCourse(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('title',)}
     search_fields = ['title']
 
+

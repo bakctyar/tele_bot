@@ -6,7 +6,7 @@ from telegram import (
 )
 from telegram.ext import ContextTypes
 
-from buyers.models import SignedPeople
+from buyers.models import SignedPeople, OrderCourse
 from asgiref.sync import sync_to_async
 from decouple import config
 
@@ -22,6 +22,7 @@ option_privacy_policy = [
     [InlineKeyboardButton("Согласен", callback_data='agree')],
     [InlineKeyboardButton("Не согласен", callback_data='not_agree')]
 ]
+
 async def privacy_policy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(option_privacy_policy)
     file_path = '/home/baktiyar/my_django/tele_bot/privacy_policy.txt'
@@ -32,8 +33,8 @@ async def privacy_policy(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                             reply_markup=reply_markup)
     except FileNotFoundError:
         await update.message.reply_text(text="Файл политики конфиденциальности не найден.")
-    except Exception as e:
-        await update.message.reply_text(text=f"Произошла ошибка: {e}")
+    except Exception as err:
+        await update.message.reply_text(text=f"Произошла ошибка: {err}")
 
 
 
@@ -54,7 +55,7 @@ async def pay_via_stripe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.id
     # Получаем данные о подписке
     selection_data = context.user_data.get('selection_data')
-
+    name_class = selection_data.__class__.__name__
     if selection_data is None:
         await context.bot.send_message(chat_id=chat_id,
                                        text="Данные о подписке отсутствуют. Пожалуйста, выберите подписку заново.")
@@ -62,22 +63,29 @@ async def pay_via_stripe(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     title = selection_data.title
     description = selection_data.description
-    payload = f"{selection_data.slug}-user_id-{user}"
+    payload = f"{name_class}-user_id-{user}"
     currency = "KGS"
+
+    if name_class == 'Course':
+        price = int(selection_data.get_price())
+    else:
+        price = int(selection_data.price)
+
     price = int(selection_data.price)
     prices = [LabeledPrice(title, price * 100)]
 
     # сохраняем invoice_payload для дольнейщей оброботки
     context.user_data['invoice_payload'] = payload
+
     await context.bot.send_invoice(
         chat_id, title, description, payload, PAY_TOKEN, currency, prices,
 
     )
 
-
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.pre_checkout_query
     if query:
+        context.user_data['query'] = query
         expected_payload = context.user_data.get('invoice_payload')
 
         if expected_payload is None:
@@ -88,16 +96,39 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             await query.answer(ok=False, error_message="Ошибка в плательщике.")
             return
 
-        user_id = update.effective_user.id
+        if expected_payload.startswith('SubscriptionOptions-'):
+            await precheckout_people(update, context)
 
-        # Проверяем, есть ли у пользователя активная подписка
-        try:
-            await sync_to_async(SignedPeople.objects.get)(user_id=user_id, status=True)
-            await query.answer(ok=False, error_message="Вы уже являетесь подписчиком. Оплата не требуется.")
-            return
-        except SignedPeople.DoesNotExist:
-            # Подписки нет, подтверждаем платеж
-            await query.answer(ok=True)
+        if expected_payload.startswith('Course-'):
+            await precheckout_course(update, context)
+
+
+
+async def precheckout_people(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = context.user_data.get('query')
+    user_id = update.effective_user.id
+    # Проверяем, есть ли у пользователя активная подписка
+    try:
+        await sync_to_async(SignedPeople.objects.get)(user_id=user_id, status=True)
+        await query.answer(ok=False, error_message="Вы уже являетесь подписчиком. Оплата не требуется.")
+        return
+    except SignedPeople.DoesNotExist:
+        # Подписки нет, подтверждаем платеж
+        await query.answer(ok=True)
+
+
+async def precheckout_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    query = context.user_data.get('query')
+    course = context.user_data.get('selection_data')
+    try:
+        user = await sync_to_async(SignedPeople.objects.get)(user_id=user_id, status=True)
+        await sync_to_async(OrderCourse.objects.get)(user=user.user_id, course=course.id)
+        await query.answer(ok=False, error_message="Вы уже купили этот курс. Оплата не требуется.")
+        return
+    except OrderCourse.DoesNotExist:
+        # покупок нет, подтверждаем платеж
+        await query.answer(ok=True)
 
 
 
@@ -105,26 +136,52 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.successful_payment:
-        chat_id = update.effective_chat.id
         selection_data = context.user_data.get('selection_data')
-        data = {
-            'user_id': update.effective_user.id,
-            'username': update.effective_user.first_name,
-            'subscription': selection_data.slug,
-            'status': True
-        }
-        try:
-            await sync_to_async(SignedPeople.objects.get)(user_id=data['user_id'])
-            await context.bot.send_message(chat_id=chat_id, text="Вы уже являетесь подписчиком")
-            privacy_policy(update, context)
-        except SignedPeople.DoesNotExist:
-            await sync_to_async(SignedPeople.objects.create)(**data)
-            await update.message.reply_text('Вы теперь подписчик!')
-            await privacy_policy(update, context)
+        name_class = selection_data.__class__.__name__
+        if name_class == 'SubscriptionOptions':
+            await successful_payment_subscriptions(update, context)
+        elif name_class == 'Course':
+            await successful_payment_course(update, context)
 
     context.user_data.pop('invoice_payload')
     context.user_data.pop('selection_data')
 
+
+
+async def successful_payment_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    selection_data = context.user_data.get('selection_data')
+    data = {
+        'user_id': update.effective_user.id,
+        'username': update.effective_user.first_name,
+        'subscription': selection_data.slug,
+        'status': True
+    }
+    try:
+        await sync_to_async(SignedPeople.objects.create)(**data)
+        await update.message.reply_text('Вы теперь подписчик!')
+        await privacy_policy(update, context)
+    except SignedPeople.DoesNotExist as err:
+        await update.message.reply_text(f'{err}')
+
+
+
+
+async def successful_payment_course(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    selection_data = context.user_data.get('selection_data')
+    try:
+        user_id = update.effective_user.id
+        user = await sync_to_async(SignedPeople.objects.get)(user_id=user_id)
+    except OrderCourse.DoesNotExist:
+        await update.message.reply_text(f'')
+    data = {
+        "user": user,
+        "course": selection_data
+    }
+    try:
+        await sync_to_async(OrderCourse.objects.create)(**data)
+        await update.message.reply_text(f'эми сен курстун ээсисин !')
+    except Exception as err:
+        await update.message.reply_text(f'{err}')
 
 
 
