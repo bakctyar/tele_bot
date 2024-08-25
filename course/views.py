@@ -1,5 +1,4 @@
 from telegram import (
-    LabeledPrice,
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup
@@ -9,17 +8,18 @@ from asgiref.sync import sync_to_async
 
 from payment.views import payment
 from .models import Course
+from buyers.models import OrderCourse, SignedPeople
 
 keyboard_purchases_course = [
     [InlineKeyboardButton('Купить', callback_data='buy')],
-    [InlineKeyboardButton('вернуться назад', callback_data='un_buy')]
+    [InlineKeyboardButton('вернуться назад', callback_data='go_back')]
 ]
 
 async def list_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == 'agree':
+    if query.data in ['agree', 'go_back']:
         try:
             # Получаем все курсы из базы данных
             base_courses = Course.objects.all()
@@ -75,14 +75,31 @@ async def choice_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_or_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == "buy":
         await payment(update, context)
-    if query.data == "un_buy":
-        await update.message.reply_text('ok')
+    if query.data == "go_back":
+        await list_course(update, context)
 
 
+async def my_course_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
 
+    try:
+        user = await sync_to_async(SignedPeople.objects.get)(user_id=user_id)
+        order_courses = await sync_to_async(lambda: list(OrderCourse.objects.select_related('course').filter(user=user)))()
+        course_titles = [order_course.course.title for order_course in order_courses]
+
+        # Формируем сообщение
+        if course_titles:
+            response_message = "Мои курсы:\n" + '\n'.join(course_titles)
+        else:
+            response_message = "Мои курсы:\nУ вас нет курсов."
+        await update.message.reply_text(text=response_message)
+
+    except SignedPeople.DoesNotExist:
+        await update.message.reply_text('Не удалось найти ваши курсы. Попробуйте позже.')
+    except Exception as e:
+        await update.message.reply_text('Не удалось получить ваши курсы. Попробуйте позже.')
 
 
 

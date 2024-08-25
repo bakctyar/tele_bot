@@ -1,18 +1,24 @@
 from decouple import config
 from asgiref.sync import sync_to_async
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot, BotCommand, MenuButtonCommands
 from telegram.ext import (
     CommandHandler, Application, ContextTypes, CallbackQueryHandler,
-    PreCheckoutQueryHandler, MessageHandler, filters
+    PreCheckoutQueryHandler, MessageHandler, filters, ConversationHandler
 )
 from payment.views import (
     payment, pay_via_stripe, pay_via_manager, precheckout_callback,
-    successful_payment, handle_photo
+    successful_payment
 )
 from course.views import (
-    list_course, choice_course, buy_or_back
+    list_course, choice_course, buy_or_back,
+    my_course_list
 )
 
+from manager.views import (
+    handle_photo, PHONE_REGEX, EMAIL_REGEX,
+    handle_number_or_email, manager,
+    save_dissatisfied_user, handle_privacy_policy
+)
 from .models import SubscriptionOptions
 
 # Кэшируем идентификаторы курсов для использования в регулярном выражении
@@ -22,12 +28,16 @@ def get_course_ids():
 course_ids_str = get_course_ids()
 course_pattern = f"^(course_({'|'.join(course_ids_str)}))$"
 
+FIRST_STATE = 0
+
 # Определение клавиатуры
 option_keyboard = [
     [InlineKeyboardButton("Стандартная подписка", callback_data='standard')],
     [InlineKeyboardButton("Про", callback_data='pro')],
     [InlineKeyboardButton("VIP", callback_data='vip')],
 ]
+
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -38,6 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     reply_markup = InlineKeyboardMarkup(option_keyboard)
     await update.message.reply_text("Выберите подписку", reply_markup=reply_markup)
+
 
 async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -58,7 +69,8 @@ async def selection_of_subscriptions(update: Update, context: ContextTypes.DEFAU
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text("Выберите действие:", reply_markup=reply_markup)
-    
+
+
 async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -84,6 +96,9 @@ async def change_subscriptions(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data.pop('chat_id', None)
     context.user_data.pop('message_id', None)
 
+
+
+
 def main() -> None:
     application = Application.builder().token(config('TOKEN_BOT')).build()
     application.add_handler(CommandHandler('start', start))
@@ -95,10 +110,34 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(pay_via_manager, pattern="^(manager)$"))
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     application.add_handler(CallbackQueryHandler(list_course, pattern="^(agree)$"))
+    application.add_handler(CallbackQueryHandler(handle_privacy_policy, pattern="not_agree"))
     application.add_handler(CallbackQueryHandler(choice_course, pattern=course_pattern))
-    application.add_handler(CallbackQueryHandler(buy_or_back, pattern="^(buy|un_buy)$"))
+    application.add_handler(CallbackQueryHandler(buy_or_back, pattern="^(buy|go_back)$"))
+
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex(PHONE_REGEX), handle_number_or_email))
+    application.add_handler(MessageHandler(filters.TEXT & filters.Regex(EMAIL_REGEX), handle_number_or_email))
+    application.add_handler(CommandHandler('my_course', my_course_list))
+    conversation = (
+        ConversationHandler(
+            entry_points=[CommandHandler('manager', manager), ],
+            states={
+                FIRST_STATE: [MessageHandler(filters.TEXT, save_dissatisfied_user)],
+            },
+            fallbacks=[],
+
+        )
+    )
+    application.add_handler(conversation)
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+# start-начать
+# manager-начать разговор с менеджером
+# my_course-мои курсы

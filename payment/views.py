@@ -2,7 +2,8 @@ from telegram import (
     LabeledPrice,
     Update,
     InlineKeyboardButton,
-    InlineKeyboardMarkup
+    InlineKeyboardMarkup,
+
 )
 from telegram.ext import ContextTypes
 
@@ -10,6 +11,7 @@ from buyers.models import SignedPeople, OrderCourse
 from asgiref.sync import sync_to_async
 from decouple import config
 
+from manager.views import manager
 
 PAY_TOKEN = config('PAYMENT_PROVIDER_TOKEN')
 
@@ -45,6 +47,8 @@ async def payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     reply_markup = InlineKeyboardMarkup(option_keyboard)
+    # context.user_data['payment_message_id'] = query.message.message_id
+    # context.user_data['payment_chat_id'] = query.message.chat.id
 
     if query.message:
         await query.message.reply_text(text='Выберите способ оплаты:', reply_markup=reply_markup)
@@ -66,17 +70,14 @@ async def pay_via_stripe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     payload = f"{name_class}-user_id-{user}"
     currency = "KGS"
 
-    if name_class == 'Course':
-        price = int(selection_data.get_price())
-    else:
-        price = int(selection_data.price)
-
     price = int(selection_data.price)
     prices = [LabeledPrice(title, price * 100)]
-
     # сохраняем invoice_payload для дольнейщей оброботки
     context.user_data['invoice_payload'] = payload
 
+    # Сохраняем идентификаторы сообщения и чата в контексте
+    # await context.bot.delete_message(chat_id=context.user_data.get('payment_chat_id'),
+    #                                  message_id=context.user_data.get('payment_message_id'))
     await context.bot.send_invoice(
         chat_id, title, description, payload, PAY_TOKEN, currency, prices,
 
@@ -101,7 +102,6 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         if expected_payload.startswith('Course-'):
             await precheckout_course(update, context)
-
 
 
 async def precheckout_people(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -158,7 +158,7 @@ async def successful_payment_subscriptions(update: Update, context: ContextTypes
     }
     try:
         await sync_to_async(SignedPeople.objects.create)(**data)
-        await update.message.reply_text('Вы теперь подписчик!')
+        await update.message.reply_text('Вы теперь подписчик! ознакомтись с политикой конфеденциальности')
         await privacy_policy(update, context)
     except SignedPeople.DoesNotExist as err:
         await update.message.reply_text(f'{err}')
@@ -194,17 +194,12 @@ async def pay_via_manager(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                   "Наш менеджер проверит зачисление денег на счет и изменит статус"
                                   " вашего доступа к курсу.Для перевода денег, пожалуйста,"
                                   " используйте следующие реквизиты:"
-                                  "[СЧЕТ КУДА МОЖНО ОТПРАВИТЬ ДЕНЕГ..........................]"
+                                  "[СЧЕТ КУДА МОЖНО ОТПРАВИТЬ ДЕНЕГ..........................] \n\n" 
                                   "Если у вас возникнут вопросы, не стесняйтесь обращаться к нам!"
                                   "Спасибо!")
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    await update.message.reply_text(text="Спасибо за фотографии! Менеджер проверит их"
-                                          " и даст ответ. Пожалуйста, укажите свой номер"
-                                          " телефона или адрес электронной почты, чтобы мы могли "
-                                          "сообщить вам результаты после проверки.")
-    await privacy_policy(update, context)
+
 
 
 

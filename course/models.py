@@ -14,6 +14,8 @@ class Course(models.Model):
         return self.title
 
     def get_price(self, status):
+        if status == 0:
+            return self.price
         discount = (status/100) * self.price
         return self.price - discount
 
@@ -30,7 +32,7 @@ class Content(models.Model):
         ordering = ['order']  # Сортировка по порядку отображения
 
     def __str__(self):
-        return f"{self.title} ({self.get_content_type_display()})"
+        return f"{self.title}"
 
 
 
